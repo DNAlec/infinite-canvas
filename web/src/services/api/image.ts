@@ -91,6 +91,7 @@ type GeminiContent = { role?: "user" | "model"; parts: GeminiPart[] };
 type GeminiPayload = {
     candidates?: Array<{ content?: { parts?: GeminiPart[] }; finishReason?: string }>;
     models?: Array<{ name?: string }>;
+    data?: Array<{ id?: string }>;
     error?: { message?: string };
     promptFeedback?: { blockReason?: string };
 };
@@ -893,8 +894,8 @@ export async function fetchImageModels(config: Pick<AiConfig, "baseUrl" | "apiKe
         if (config.apiFormat === "gemini") {
             const response = await axios.get<GeminiPayload>(geminiApiUrl({ ...defaultGeminiConfig, ...config }), { headers: geminiHeaders({ ...defaultGeminiConfig, ...config }) });
             validateGeminiPayload(response.data);
-            return (response.data.models || [])
-                .map((model) => model.name?.replace(/^models\//, ""))
+            return (response.data.models?.map((model) => model.name) ?? response.data.data?.map((model) => model.id) ?? [])
+                .map((name) => name?.replace(/^models\//, ""))
                 .filter((id): id is string => Boolean(id))
                 .sort((a, b) => a.localeCompare(b));
         }

@@ -9,6 +9,24 @@ Object.defineProperty(globalThis, "localStorage", { value: {
 Object.defineProperty(globalThis, "window", { value: { localStorage }, configurable: true });
 const { defaultConfig, buildApiUrl, useConfigStore, CONFIG_STORE_KEY } = await import("../src/stores/use-config-store");
 
+const geminiListConfig = { baseUrl: "https://api.nekocloud.vip", apiKey: "fixture-only", apiFormat: "gemini" as const };
+test("Gemini discovery accepts NekoCloud data.id entries", async () => {
+    const axios = (await import("axios")).default;
+    const { fetchImageModels } = await import("../src/services/api/image");
+    const previous = axios.defaults.adapter;
+    axios.defaults.adapter = async (request) => ({ data: { data: [{ id: "gemini-3-pro-image-preview" }, { id: "gemini-2.5-flash-image" }] }, status: 200, statusText: "OK", headers: {}, config: request });
+    try { expect(await fetchImageModels(geminiListConfig)).toEqual(["gemini-2.5-flash-image", "gemini-3-pro-image-preview"]); }
+    finally { axios.defaults.adapter = previous; }
+});
+test("Gemini discovery retains Google native models.name support", async () => {
+    const axios = (await import("axios")).default;
+    const { fetchImageModels } = await import("../src/services/api/image");
+    const previous = axios.defaults.adapter;
+    axios.defaults.adapter = async (request) => ({ data: { models: [{ name: "models/gemini-3-pro-image-preview" }] }, status: 200, statusText: "OK", headers: {}, config: request });
+    try { expect(await fetchImageModels(geminiListConfig)).toEqual(["gemini-3-pro-image-preview"]); }
+    finally { axios.defaults.adapter = previous; }
+});
+
 test("fresh configuration uses one NekoCloud OpenAI channel without doubling v1", () => {
     expect(defaultConfig.baseUrl).toBe("https://api.nekocloud.vip");
     expect(defaultConfig.channels).toHaveLength(1);

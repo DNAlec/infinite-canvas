@@ -40,15 +40,16 @@ test("NekoCloud discovery filters Gemini names out of OpenAI channels", async ()
 });
 test("saved NekoCloud models reject protocol mismatches before HTTP", async () => {
     const { resolveModelRequestConfig } = await import("../src/stores/use-config-store");
-    expect(() => resolveModelRequestConfig(defaultConfig, "default::gemini-3-pro-image-preview")).toThrow("Gemini");
-    const config = { ...defaultConfig, channels: [{ ...defaultConfig.channels[0], apiFormat: "gemini" as const }] };
+    const savedConfig = { ...defaultConfig, channels: [{ ...defaultConfig.channels[0], id: "default", nekoPreset: undefined }] };
+    expect(() => resolveModelRequestConfig(savedConfig, "default::gemini-3-pro-image-preview")).toThrow("Gemini");
+    const config = { ...savedConfig, channels: [{ ...savedConfig.channels[0], apiFormat: "gemini" as const }] };
     expect(() => resolveModelRequestConfig(config, "default::gpt-image-2")).toThrow("OpenAI");
 });
 
-test("fresh configuration uses one NekoCloud OpenAI channel without doubling v1", () => {
+test("fresh NekoCloud drawing channels do not double v1", () => {
     expect(defaultConfig.baseUrl).toBe("https://api.nekocloud.vip");
-    expect(defaultConfig.channels).toHaveLength(1);
-    expect(defaultConfig.channels[0].name).toBe("猫云");
+    expect(defaultConfig.channels).toHaveLength(2);
+    expect(defaultConfig.channels[0].name).toBe("猫云 GPT 绘图");
     expect(defaultConfig.channels[0].apiKey).toBe("");
     for (const base of [defaultConfig.baseUrl, `${defaultConfig.baseUrl}/v1/`]) {
         expect(buildApiUrl(base, "/images/generations")).toBe("https://api.nekocloud.vip/v1/images/generations");
@@ -102,7 +103,7 @@ test("standard image generation still uses native OpenAI HTTP rather than templa
         return { data: { data: [{ b64_json: "dGVzdA==" }] }, status: 200, statusText: "OK", headers: {}, config: request };
     };
     try {
-        const images = await requestGeneration({ ...defaultConfig, count: "1" }, "test prompt");
+        const images = await requestGeneration({ ...defaultConfig, model: "custom::gpt-image-2", channels: [{ ...defaultConfig.channels[0], id: "custom", nekoPreset: undefined, apiKey: "test-key", models: [{ name: "gpt-image-2", capability: "image" }] }], count: "1" }, "test prompt");
         expect(target).toBe("https://api.nekocloud.vip/v1/images/generations");
         expect(images[0].dataUrl).toContain("dGVzdA==");
     } finally { axios.defaults.adapter = previous; }

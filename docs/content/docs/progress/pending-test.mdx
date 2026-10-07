@@ -7,6 +7,10 @@ description: Implemented changes that still need manual verification
 
 ## 猫云定制优先验收
 
+- Unified NekoCloud Key: explicit validation uses GET `/v1/models` only; enable the intersection with the seven image presets, with separate GPT/OpenAI and Gemini protocols. Failed or unmatched validation enables no presets.
+- Editing the Key immediately revokes preset permissions; stale responses, including changing back to the same Key, must not apply. Keys are session-only by default, optionally remembered locally without encryption; restored inputs require explicit revalidation.
+- Preserve existing channels, keys, canvas and assets on hydration; do not fetch or copy old keys into presets. Real non-production Key permissions, paid GPT/Gemini image/edit requests, browser CORS/iframe and mobile layout remain pending manual acceptance.
+
 - 猫云版本禁止 URL Key/token 导入及模型自定义脚本；下方上游旧清单中的脚本编辑器和 URL 凭据导入不适用于此版本。
 - 默认猫云渠道、手填 Key、默认刷新后不保留 Key、可选所有渠道本地非加密记住及取消后清除持久化值。
 - 独立域名与面板 iframe 的 CORS、CSP/frame-ancestors、浏览器本地存储隔离；未部署，未修改 sub2api。

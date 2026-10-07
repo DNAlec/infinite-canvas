@@ -1,7 +1,7 @@
 import axios from "axios";
 
 import i18n from "@/i18n";
-import { buildApiUrl, resolveModelRequestConfig, resolveModelScript, withLocalProxy, type AiConfig, type ModelChannel } from "@/stores/use-config-store";
+import { buildApiUrl, modelMatchesChannelProtocol, resolveModelRequestConfig, resolveModelScript, withLocalProxy, type AiConfig, type ModelChannel } from "@/stores/use-config-store";
 import { normalizePluginImages, runModelPlugin } from "./model-plugin";
 import { nanoid } from "nanoid";
 import { dataUrlToFile } from "@/lib/image-utils";
@@ -896,7 +896,7 @@ export async function fetchImageModels(config: Pick<AiConfig, "baseUrl" | "apiKe
             validateGeminiPayload(response.data);
             return (response.data.models?.map((model) => model.name) ?? response.data.data?.map((model) => model.id) ?? [])
                 .map((name) => name?.replace(/^models\//, ""))
-                .filter((id): id is string => Boolean(id))
+                .filter((id): id is string => Boolean(id) && modelMatchesChannelProtocol(config.baseUrl, config.apiFormat, id!))
                 .sort((a, b) => a.localeCompare(b));
         }
         const response = await axios.get<{ data?: Array<{ id?: string }>; error?: { message?: string } }>(buildApiUrl(config.baseUrl, "/models"), {
@@ -906,7 +906,7 @@ export async function fetchImageModels(config: Pick<AiConfig, "baseUrl" | "apiKe
         });
         return (response.data.data || [])
             .map((model) => model.id)
-            .filter((id): id is string => Boolean(id))
+            .filter((id): id is string => Boolean(id) && modelMatchesChannelProtocol(config.baseUrl, config.apiFormat, id!))
             .sort((a, b) => a.localeCompare(b));
     } catch (error) {
         throw new Error(readAxiosError(error, apiText("modelReadFailed")));

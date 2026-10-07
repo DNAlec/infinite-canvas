@@ -27,6 +27,24 @@ test("Gemini discovery retains Google native models.name support", async () => {
     finally { axios.defaults.adapter = previous; }
 });
 
+test("NekoCloud discovery filters Gemini names out of OpenAI channels", async () => {
+    const axios = (await import("axios")).default;
+    const { fetchImageModels } = await import("../src/services/api/image");
+    const previous = axios.defaults.adapter;
+    axios.defaults.adapter = async (request) => ({ data: { data: [{ id: "gpt-image-2" }, { id: "gemini-3-pro-image-preview" }] }, status: 200, statusText: "OK", headers: {}, config: request });
+    try {
+        expect(await fetchImageModels({ ...geminiListConfig, apiFormat: "openai" })).toEqual(["gpt-image-2"]);
+        expect(await fetchImageModels(geminiListConfig)).toEqual(["gemini-3-pro-image-preview"]);
+        expect(await fetchImageModels({ ...geminiListConfig, baseUrl: "https://third-party.example", apiFormat: "openai" })).toEqual(["gemini-3-pro-image-preview", "gpt-image-2"]);
+    } finally { axios.defaults.adapter = previous; }
+});
+test("saved NekoCloud models reject protocol mismatches before HTTP", async () => {
+    const { resolveModelRequestConfig } = await import("../src/stores/use-config-store");
+    expect(() => resolveModelRequestConfig(defaultConfig, "default::gemini-3-pro-image-preview")).toThrow("Gemini");
+    const config = { ...defaultConfig, channels: [{ ...defaultConfig.channels[0], apiFormat: "gemini" as const }] };
+    expect(() => resolveModelRequestConfig(config, "default::gpt-image-2")).toThrow("OpenAI");
+});
+
 test("fresh configuration uses one NekoCloud OpenAI channel without doubling v1", () => {
     expect(defaultConfig.baseUrl).toBe("https://api.nekocloud.vip");
     expect(defaultConfig.channels).toHaveLength(1);

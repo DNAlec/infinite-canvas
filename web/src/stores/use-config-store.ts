@@ -434,8 +434,19 @@ export function resolveModelChannel(config: AiConfig, value: string) {
     return matched || config.channels[0] || createModelChannel({ id: "default", name: i18n.t("config.channels.defaultName"), baseUrl: config.baseUrl, apiKey: config.apiKey, apiFormat: config.apiFormat, models: config.models.map(modelOptionName).map((name) => ({ name, capability: guessCapability(name) })) });
 }
 
+export function modelMatchesChannelProtocol(baseUrl: string, apiFormat: string, model: string): boolean {
+    try {
+        if (new URL(baseUrl).origin !== "https://api.nekocloud.vip") return true;
+    } catch { return true; }
+    const gemini = model.replace(/^models\//, "").toLowerCase().startsWith("gemini-");
+    return apiFormat === "gemini" ? gemini : !gemini;
+}
+
 export function resolveModelRequestConfig(config: AiConfig, value: string) {
     const channel = resolveModelChannel(config, value);
+    if (!modelMatchesChannelProtocol(channel.baseUrl, channel.apiFormat, modelOptionName(value || config.model))) {
+        throw new Error(channel.apiFormat === "gemini" ? "此模型不适用于 Gemini 渠道，请切换到 OpenAI 渠道。" : "Gemini 模型需使用 Gemini 协议渠道，请切换渠道后再生成。");
+    }
     return {
         ...config,
         model: modelOptionName(value || config.model),

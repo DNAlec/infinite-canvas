@@ -111,56 +111,7 @@ function createPoll(signal?: AbortSignal) {
  * The script still runs as an async function body and must `return` the result.
  */
 export async function runModelPlugin<T = unknown>(args: RunPluginArgs): Promise<T> {
-    const { config } = args;
-    const http = createPluginHttp(config, { signal: args.signal });
-    const request = createPluginRequest(config, { signal: args.signal });
-    const poll = createPoll(args.signal);
-    const runner = new Function(
-        "prompt",
-        "images",
-        "videos",
-        "audios",
-        "messages",
-        "params",
-        "model",
-        "baseUrl",
-        "apiKey",
-        "systemPrompt",
-        "reasoningEffort",
-        "http",
-        "request",
-        "poll",
-        "sleep",
-        "signal",
-        "onDelta",
-        `"use strict"; return (async () => {\n${args.script}\n})();`,
-    ) as (...fnArgs: unknown[]) => Promise<T>;
-    try {
-        return await runner(
-            args.prompt || "",
-            args.images || [],
-            args.videos || [],
-            args.audios || [],
-            args.messages || [],
-            args.params || {},
-            config.model,
-            config.baseUrl,
-            config.apiKey,
-            config.systemPrompt || "",
-            config.reasoningEffort,
-            http,
-            request,
-            poll,
-            (ms: number) => sleep(ms, args.signal),
-            args.signal,
-            args.onDelta,
-        );
-    } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError") throw error;
-        if (axios.isCancel(error)) throw error;
-        const message = error instanceof Error ? error.message : String(error);
-        throw new Error(i18n.t("modelPlugin.executionFailed", { message }));
-    }
+    throw new Error("猫云画布已禁用模型自定义脚本");
 }
 
 export type PluginVariable = { name: string; type: string; desc: string; capabilities?: ModelCapability[] };

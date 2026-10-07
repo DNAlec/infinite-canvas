@@ -5,8 +5,22 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <meta name="description" content="一个无限画布创作工具" />
         <link rel="icon" href="/logo.svg" />
-        <title>无限画布</title>
+        <title>猫云画布</title>
         <script>
+            // Client cleanup cannot remove the initial request from server logs.
+            try {
+                var clean = function (raw) {
+                    return raw.split("&").filter(function (part) {
+                        var key = decodeURIComponent(part.split("=")[0].replace(/\+/g, " ")).replace(/[-_]/g, "").toLowerCase();
+                        return !/(?:key|token|secret|password|authorization)$/.test(key) && key !== "baseurl" && key !== "agenturl";
+                    }).join("&");
+                };
+                var query = clean(location.search.slice(1));
+                var hash = clean(location.hash.slice(1));
+                history.replaceState(history.state, "", location.pathname + (query ? "?" + query : "") + (hash ? "#" + hash : ""));
+            } catch (e) {
+                history.replaceState(history.state, "", location.pathname);
+            }
             try {
                 var s = JSON.parse(localStorage.getItem("infinite-canvas:theme_store") || "{}");
                 var t = s.state && s.state.theme === "light" ? "light" : "dark";

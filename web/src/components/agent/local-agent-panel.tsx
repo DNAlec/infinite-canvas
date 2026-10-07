@@ -191,7 +191,7 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
     const threadOperationRef = useRef(0);
     const threadOperationSequenceRef = useRef(0);
     const endpoint = useMemo(() => url.trim().replace(/\/$/, ""), [url]);
-    const urlAgentAutoConnect = searchParams.has("agentUrl") && searchParams.has("agentToken");
+    const urlAgentAutoConnect = false;
     useEffect(() => {
         let disposed = false;
         void acquireAgentClientId().then((clientId) => {
@@ -909,11 +909,9 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
             clearAgentSession({ enabled: false, connected: false, activity: rt("offline"), connectError: "" });
             return;
         }
-        const urlToken = searchParams.get("agentToken") || "";
-        const urlEndpoint = searchParams.get("agentUrl") || "";
-        const discovered = urlToken ? null : await discoverAgentConfig(endpoint || DEFAULT_AGENT_URL);
-        const nextEndpoint = (urlEndpoint || discovered?.url || endpoint || DEFAULT_AGENT_URL).trim().replace(/\/$/, "");
-        const nextToken = (urlToken || token.trim() || discovered?.token || "").trim();
+        const discovered = await discoverAgentConfig(endpoint || DEFAULT_AGENT_URL);
+        const nextEndpoint = (discovered?.url || endpoint || DEFAULT_AGENT_URL).trim().replace(/\/$/, "");
+        const nextToken = (token.trim() || discovered?.token || "").trim();
         if (!nextEndpoint) {
             const text = rt("addressRequired");
             if (!silent) {

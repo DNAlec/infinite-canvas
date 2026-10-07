@@ -72,7 +72,7 @@ export type ChannelCredentialsImportResult = {
 
 export const CONFIG_STORE_KEY = "infinite-canvas:ai_config_store";
 const CHANNEL_MODEL_SEPARATOR = "::";
-const OPENAI_BASE_URL = "https://api.openai.com";
+const OPENAI_BASE_URL = "https://api.nekocloud.vip";
 const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com";
 export const LOCAL_PROXY_PACKAGE = "@basketikun/canvas-proxy";
 export const DEFAULT_LOCAL_PROXY_URL = "http://127.0.0.1:23210";
@@ -85,7 +85,7 @@ export const defaultConfig: AiConfig = {
     channels: [
         {
             id: "default",
-            name: i18n.t("config.channels.defaultName"),
+            name: "猫云",
             baseUrl: OPENAI_BASE_URL,
             apiKey: "",
             apiFormat: "openai",
@@ -132,6 +132,8 @@ export const defaultWebdavSyncConfig: WebdavSyncConfig = {
 };
 
 type ConfigStore = {
+    rememberApiKeys: boolean;
+    setRememberApiKeys: (remember: boolean) => void;
     config: AiConfig;
     webdav: WebdavSyncConfig;
     isConfigOpen: boolean;
@@ -206,6 +208,8 @@ function isAiConfigReady(config: AiConfig, model: string) {
 export const useConfigStore = create<ConfigStore>()(
     persist(
         (set, get) => ({
+            rememberApiKeys: false,
+            setRememberApiKeys: (rememberApiKeys) => set({ rememberApiKeys }),
             config: defaultConfig,
             webdav: defaultWebdavSyncConfig,
             isConfigOpen: false,
@@ -238,10 +242,11 @@ export const useConfigStore = create<ConfigStore>()(
         }),
         {
             name: CONFIG_STORE_KEY,
-            partialize: (state) => ({ config: state.config, webdav: state.webdav }),
+            partialize: (state) => ({ rememberApiKeys: state.rememberApiKeys, config: storedKeyConfig(state.config, state.rememberApiKeys), webdav: state.webdav }),
             merge: (persisted, current) => {
                 const persistedState = (persisted || {}) as Partial<ConfigStore>;
-                const persistedConfig = (persistedState.config || {}) as Partial<AiConfig>;
+                const rememberApiKeys = persistedState.rememberApiKeys === true;
+                const persistedConfig = storedKeyConfig({ ...defaultConfig, ...persistedState.config }, rememberApiKeys);
                 const persistedWebdav = (persistedState.webdav || {}) as Partial<WebdavSyncConfig>;
                 const config = { ...defaultConfig, ...persistedConfig };
                 if (!Array.isArray(persistedConfig.channels)) config.channels = [];
@@ -249,6 +254,7 @@ export const useConfigStore = create<ConfigStore>()(
                 const models = modelOptionsFromChannels(channels);
                 return {
                     ...current,
+                    rememberApiKeys,
                     webdav: { ...defaultWebdavSyncConfig, ...persistedWebdav },
                     config: {
                         ...config,
@@ -279,6 +285,10 @@ export const useConfigStore = create<ConfigStore>()(
         },
     ),
 );
+
+function storedKeyConfig(config: AiConfig, remember: boolean): AiConfig {
+    return remember ? config : { ...config, apiKey: "", channels: config.channels.map((channel) => ({ ...channel, apiKey: "" })) };
+}
 
 export function useEffectiveConfig() {
     const config = useConfigStore((state) => state.config);

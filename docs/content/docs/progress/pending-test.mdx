@@ -5,6 +5,14 @@ description: Implemented changes that still need manual verification
 
 # Pending Tests
 
+## 猫云定制优先验收
+
+- 猫云版本禁止 URL Key/token 导入及模型自定义脚本；下方上游旧清单中的脚本编辑器和 URL 凭据导入不适用于此版本。
+- 默认猫云渠道、手填 Key、默认刷新后不保留 Key、可选所有渠道本地非加密记住及取消后清除持久化值。
+- 独立域名与面板 iframe 的 CORS、CSP/frame-ancestors、浏览器本地存储隔离；未部署，未修改 sub2api。
+- 使用专用非生产测试 Key 验证真实模型列表、标准生图/改图、素材保存、导出与画布交互；单元测试 HTTP adapter 响应不代表真实服务验收。
+- URL 清理仅发生在浏览器，不能消除首请求服务器/代理日志。保持 analytics 空配置和原作者链接。
+
 The current release needs manual verification in these areas:
 
 - Canvas image previews: canvas image nodes, the left element list, the node reference bar, my-assets cards, the asset picker, image workbench result cards and history thumbnails, and the image/video workbench reference strips all render from a preview capped at a 768px long edge, so image-heavy views no longer decode the originals. Previews live locally only: canvas data, asset data, generation history, exported zips, and WebDAV sync must never contain preview content, and previews should be cleaned up when an image is deleted or no longer used. Opening the full-size image, editing, downloading, exporting, and generation references must keep using the original; an image that is already at or under 768px, exists only as a remote URL, or uses a custom cover should fall back to the original.

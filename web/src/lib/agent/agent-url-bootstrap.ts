@@ -1,15 +1,8 @@
-export function hasAgentUrlBootstrap(hash: string) {
-    const params = new URLSearchParams(hash.replace(/^#/, ""));
-    return params.has("agentUrl") || params.has("agentToken");
+// URL credential bootstrap is disabled in the NekoCloud edition.
+export function hasAgentUrlBootstrap(_hash: string) {
+    return false;
 }
 
-export function readAgentUrlBootstrap(hash: string) {
-    const params = new URLSearchParams(hash.replace(/^#/, ""));
-    if (!params.has("agentUrl") && !params.has("agentToken")) return null;
-    const url = params.get("agentUrl")?.trim() || "";
-    const token = params.get("agentToken")?.trim() || "";
-    params.delete("agentUrl");
-    params.delete("agentToken");
-    const remaining = params.toString();
-    return { url, token, remainingHash: remaining ? `#${remaining}` : "" };
+export function readAgentUrlBootstrap(_hash: string): { url: string; token: string; remainingHash: string } | null {
+    return null;
 }

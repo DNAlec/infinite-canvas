@@ -23,7 +23,7 @@ export type ModelChannel = {
     apiKey: string;
     apiFormat: ApiCallFormat;
     models: ChannelModel[];
-    nekoPreset?: "gpt" | "gemini";
+    nekoPreset?: "gpt" | "gemini" | "grok";
 };
 
 export type AiConfig = {
@@ -80,7 +80,7 @@ export const LOCAL_PROXY_PACKAGE = "@basketikun/canvas-proxy";
 export const DEFAULT_LOCAL_PROXY_URL = "http://127.0.0.1:23210";
 
 export function createNekoPresets(): ModelChannel[] {
-    return (["gpt", "gemini"] as const).map((preset) => ({ id: `nekocloud-${preset}`, nekoPreset: preset, name: preset === "gpt" ? "猫云 GPT 绘图" : "猫云 Gemini 绘图", baseUrl: OPENAI_BASE_URL, apiKey: "", apiFormat: preset === "gpt" ? "openai" : "gemini", models: [] }));
+    return (["gpt", "gemini", "grok"] as const).map((preset) => ({ id: `nekocloud-${preset}`, nekoPreset: preset, name: preset === "gpt" ? "猫云 GPT 绘图" : preset === "grok" ? "猫云 Grok 绘图" : "猫云 Gemini 绘图", baseUrl: OPENAI_BASE_URL, apiKey: "", apiFormat: preset === "gemini" ? "gemini" : "openai", models: [] }));
 }
 
 export const defaultConfig: AiConfig = {
@@ -124,6 +124,7 @@ export const defaultWebdavSyncConfig: WebdavSyncConfig = {
 };
 
 export const NEKO_DRAWING_MODELS = {
+    grok: ["grok-imagine-image", "grok-imagine-image-2.0", "grok-imagine-image-quality"],
     gpt: ["gpt-image-2", "gpt-image-2.5-flare", "gpt-image-2.5-sunburst"],
     gemini: ["gemini-2.5-flash-image", "gemini-3.1-flash-lite-image", "gemini-3.1-flash-image-preview", "gemini-3-pro-image-preview"],
 };
@@ -235,7 +236,7 @@ export const useConfigStore = create<ConfigStore>()(
                     const models = modelOptionsFromChannels(channels);
                     const available = channels.filter((channel) => channel.nekoPreset).flatMap((channel) => channel.models.map((model) => encodeChannelModel(channel.id, model.name)));
                     const imageModel = models.includes(config.imageModel) ? config.imageModel : available[0] || "";
-                    set({ config: { ...config, channels, models, imageModel, model: models.includes(config.model) ? config.model : imageModel }, nekoValidation: { status: available.length ? "success" : "empty", message: available.length ? `校验成功，已启用 ${available.length} 个绘图模型。` : "校验完成，但此 Key 的模型列表没有匹配的 GPT / Gemini 绘图预设。" } });
+                    set({ config: { ...config, channels, models, imageModel, model: models.includes(config.model) ? config.model : imageModel }, nekoValidation: { status: available.length ? "success" : "empty", message: available.length ? `校验成功，已启用 ${available.length} 个绘图模型。` : "校验完成，但此 Key 的模型列表没有匹配的 GPT / Gemini / Grok 绘图预设。" } });
                 } catch (error) {
                     if (revision !== nekoValidationRevision || get().nekoKey.trim() !== key) return;
                     const status = axios.isAxiosError(error) ? error.response?.status : undefined;

@@ -48,7 +48,7 @@ test("saved NekoCloud models reject protocol mismatches before HTTP", async () =
 
 test("fresh NekoCloud drawing channels do not double v1", () => {
     expect(defaultConfig.baseUrl).toBe("https://api.nekocloud.vip");
-    expect(defaultConfig.channels).toHaveLength(2);
+    expect(defaultConfig.channels).toHaveLength(3);
     expect(defaultConfig.channels[0].name).toBe("猫云 GPT 绘图");
     expect(defaultConfig.channels[0].apiKey).toBe("");
     for (const base of [defaultConfig.baseUrl, `${defaultConfig.baseUrl}/v1/`]) {

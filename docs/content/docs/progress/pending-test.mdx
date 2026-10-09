@@ -7,7 +7,9 @@ description: Implemented changes that still need manual verification
 
 ## 猫云定制优先验收
 
-- Unified NekoCloud Key: explicit validation uses GET `/v1/models` only; enable the intersection with the seven image presets, with separate GPT/OpenAI and Gemini protocols. Failed or unmatched validation enables no presets.
+- Grok 预设：刷新后重新校验 Key，核对三个图像模型按权限启用；真实生图、改图与账单待用户验收，不包含视频模型。
+
+- Unified NekoCloud Key: explicit validation uses GET `/v1/models` only; enable the intersection with the ten image presets, with GPT/Grok OpenAI and Gemini protocols. Failed or unmatched validation enables no presets.
 - Editing the Key immediately revokes preset permissions; stale responses, including changing back to the same Key, must not apply. Keys are session-only by default, optionally remembered locally without encryption; restored inputs require explicit revalidation.
 - Preserve existing channels, keys, canvas and assets on hydration; do not fetch or copy old keys into presets. Real non-production Key permissions, paid GPT/Gemini image/edit requests, browser CORS/iframe and mobile layout remain pending manual acceptance.
 

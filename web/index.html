@@ -7,6 +7,14 @@
         <link rel="icon" href="/logo.svg" />
         <title>猫云画布</title>
         <script>
+            // Accept only the startup language, never panel credentials.
+            try {
+                var embeddedLang = new URLSearchParams(location.hash.slice(1)).get('lang');
+                if (embeddedLang === 'zh' || embeddedLang === 'en') {
+                    localStorage.setItem('infinite-canvas:locale', embeddedLang === 'zh' ? 'zh-CN' : 'en-US');
+                    document.documentElement.lang = embeddedLang === 'zh' ? 'zh-CN' : 'en-US';
+                }
+            } catch (e) {}
             // Client cleanup cannot remove the initial request from server logs.
             try {
                 var clean = function (raw) {

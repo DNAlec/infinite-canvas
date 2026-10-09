@@ -6,9 +6,24 @@ Object.defineProperty(globalThis, "window", { value: { localStorage }, configura
 const { defaultConfig, useConfigStore, CONFIG_STORE_KEY } = await import("../src/stores/use-config-store");
 const { createJSONStorage } = await import("zustand/middleware");
 useConfigStore.persist.setOptions({ storage: createJSONStorage(() => localStorage) });
+test("Grok discovery enables only accessible image models on an OpenAI preset", async () => {
+    const axios = (await import("axios")).default;
+    const previous = axios.defaults.adapter;
+    axios.defaults.adapter = async request => ({ data: { data: [{ id: "grok-imagine-image" }, { id: "grok-imagine-image-2.0" }, { id: "grok-imagine-video" }] }, status: 200, statusText: "OK", headers: {}, config: request });
+    try {
+        useConfigStore.setState({ config: structuredClone(defaultConfig) });
+        useConfigStore.getState().setNekoKey("grok-test-key");
+        await useConfigStore.getState().validateNekoKey();
+        const channel = useConfigStore.getState().config.channels.find(c => c.nekoPreset === "grok");
+        expect(channel?.apiFormat).toBe("openai");
+        expect(channel?.models.map(m => m.name)).toEqual(["grok-imagine-image", "grok-imagine-image-2.0"]);
+        useConfigStore.getState().setNekoKey("changed-key");
+        expect(useConfigStore.getState().config.channels.find(c => c.nekoPreset === "grok")?.models).toEqual([]);
+    } finally { axios.defaults.adapter = previous; }
+});
 test("fresh drawing presets have both protocols but no unverified selectable models", () => {
-    expect(defaultConfig.channels.map(c => c.apiFormat)).toEqual(["openai", "gemini"]);
-    expect(defaultConfig.channels.map(c => c.name)).toEqual(["猫云 GPT 绘图", "猫云 Gemini 绘图"]);
+    expect(defaultConfig.channels.map(c => c.apiFormat)).toEqual(["openai", "gemini", "openai"]);
+    expect(defaultConfig.channels.map(c => c.name)).toEqual(["猫云 GPT 绘图", "猫云 Gemini 绘图", "猫云 Grok 绘图"]);
     expect(defaultConfig.channels.every(c => c.baseUrl === "https://api.nekocloud.vip" && !c.apiKey && c.models.length === 0)).toBe(true);
     expect(defaultConfig.models).toEqual([]);
     expect(defaultConfig.imageModel).toBe("");
@@ -26,7 +41,7 @@ test("validate once applies only allowed drawing models with a shared session ke
         await store.validateNekoKey();
         const state = useConfigStore.getState();
         expect(state.nekoValidation.status).toBe("success");
-        expect(state.config.channels.map(c => c.models)).toEqual([[{ name: "gpt-image-2.5-flare", capability: "image" }], [{ name: "gemini-3.1-flash-lite-image", capability: "image" }]]);
+        expect(state.config.channels.map(c => c.models)).toEqual([[{ name: "gpt-image-2.5-flare", capability: "image" }], [{ name: "gemini-3.1-flash-lite-image", capability: "image" }], []]);
         expect(state.config.channels.every(c => c.apiKey === "test-shared-key")).toBe(true);
         expect(requests).toHaveLength(1);
         expect(requests[0].method).toBe("get");
@@ -49,7 +64,7 @@ test("saved custom channels survive hydration without copying old keys to preset
     await useConfigStore.persist.rehydrate();
     const state = useConfigStore.getState();
     expect(state.config.channels[0]).toMatchObject(custom);
-    expect(state.config.channels.filter(c => c.nekoPreset)).toHaveLength(2);
+    expect(state.config.channels.filter(c => c.nekoPreset)).toHaveLength(3);
     expect(state.config.channels.filter(c => c.nekoPreset).every(c => !c.apiKey && !c.models.length)).toBe(true);
     expect(state.nekoKey).toBe("");
     expect(state.config.imageModel).toBe("default::custom-image");
@@ -148,7 +163,7 @@ test("model-list timeout has a specific safe error", async () => {
     } finally { axios.defaults.adapter = previous; }
 });
 
-test("native names enable all seven exact drawing presets and retain a custom default", async () => {
+test("native names enable all ten exact drawing presets and retain a custom default", async () => {
     const { NEKO_DRAWING_MODELS } = await import("../src/stores/use-config-store");
     const axios = (await import("axios")).default;
     const previous = axios.defaults.adapter;
@@ -161,7 +176,7 @@ test("native names enable all seven exact drawing presets and retain a custom de
         const config = useConfigStore.getState().config;
         expect(config.channels[0]).toEqual(custom);
         expect(config.imageModel).toBe("custom::my-image");
-        expect(config.channels.filter(c => c.nekoPreset).flatMap(c => c.models)).toHaveLength(7);
+        expect(config.channels.filter(c => c.nekoPreset).flatMap(c => c.models)).toHaveLength(10);
         expect(config.channels.filter(c => c.nekoPreset).flatMap(c => c.models).every(m => m.capability === "image")).toBe(true);
     } finally { axios.defaults.adapter = previous; }
 });

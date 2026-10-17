@@ -83,6 +83,16 @@ export function createNekoPresets(): ModelChannel[] {
     return (["gpt", "gemini", "grok"] as const).map((preset) => ({ id: `nekocloud-${preset}`, nekoPreset: preset, name: preset === "gpt" ? "猫云 GPT 绘图" : preset === "grok" ? "猫云 Grok 绘图" : "猫云 Gemini 绘图", baseUrl: OPENAI_BASE_URL, apiKey: "", apiFormat: preset === "gemini" ? "gemini" : "openai", models: [] }));
 }
 
+/** Managed identity and transport never come from persisted/imported channel fields. */
+function rebuildManagedPresets(channels: ModelChannel[]): ModelChannel[] {
+    const custom = channels.filter((channel) => !channel.nekoPreset);
+    const presets = createNekoPresets();
+    for (const preset of presets) {
+        while (custom.some((channel) => channel.id === preset.id)) preset.id += "-preset";
+    }
+    return [...custom, ...presets];
+}
+
 export const defaultConfig: AiConfig = {
     channelMode: "local",
     baseUrl: OPENAI_BASE_URL,
@@ -232,7 +242,7 @@ export const useConfigStore = create<ConfigStore>()(
                     const names = new Set<string>((data.data || data.models).map((entry: { id?: string; name?: string }) => (entry.id || entry.name || "").replace(/^models\//, "")));
                     if (revision !== nekoValidationRevision || get().nekoKey.trim() !== key) return;
                     const config = get().config;
-                    const channels = config.channels.map((channel) => channel.nekoPreset ? { ...channel, apiKey: key, models: NEKO_DRAWING_MODELS[channel.nekoPreset].filter((name) => names.has(name)).map((name) => ({ name, capability: "image" as const })) } : channel);
+                    const channels = rebuildManagedPresets(config.channels).map((channel) => channel.nekoPreset ? { ...channel, apiKey: key, models: NEKO_DRAWING_MODELS[channel.nekoPreset].filter((name) => names.has(name)).map((name) => ({ name, capability: "image" as const })) } : channel);
                     const models = modelOptionsFromChannels(channels);
                     const available = channels.filter((channel) => channel.nekoPreset).flatMap((channel) => channel.models.map((model) => encodeChannelModel(channel.id, model.name)));
                     const imageModel = models.includes(config.imageModel) ? config.imageModel : available[0] || "";
@@ -278,6 +288,25 @@ export const useConfigStore = create<ConfigStore>()(
         }),
         {
             name: CONFIG_STORE_KEY,
+            // Persist the sanitized snapshot even when storage already has the current version.
+            onRehydrateStorage: function () {
+                const storage = this.storage;
+                const name = this.name;
+                return (state, error) => {
+                    if (!state || error) return;
+                    try {
+                        state.setRememberApiKeys(state.rememberApiKeys);
+                    } catch {
+                        // Keep the sanitized in-memory state and finish hydration without retrying writes.
+                        try {
+                            storage?.removeItem(name);
+                        } catch {
+                            // Never display storage errors: their messages may contain credentials.
+                            window.alert("无法保存或清除本地配置，旧凭据可能仍保留在此浏览器中。请在浏览器设置中清除此站点的数据后重试；当前已清理的内存配置仍可使用。");
+                        }
+                    }
+                };
+            },
             partialize: (state) => ({ nekoKey: state.rememberApiKeys ? state.nekoKey : "", rememberApiKeys: state.rememberApiKeys, config: storedKeyConfig(state.config, state.rememberApiKeys), webdav: state.webdav }),
             merge: (persisted, current) => {
                 const persistedState = (persisted || {}) as Partial<ConfigStore>;
@@ -285,14 +314,8 @@ export const useConfigStore = create<ConfigStore>()(
                 const persistedConfig = storedKeyConfig({ ...defaultConfig, ...persistedState.config }, rememberApiKeys);
                 const persistedWebdav = (persistedState.webdav || {}) as Partial<WebdavSyncConfig>;
                 const config = { ...defaultConfig, ...persistedConfig };
-                if (!Array.isArray(persistedConfig.channels)) config.channels = [];
-                const channels = normalizeChannels(config);
-                for (const preset of createNekoPresets()) {
-                    if (!channels.some((channel) => channel.nekoPreset === preset.nekoPreset)) {
-                        while (channels.some((channel) => channel.id === preset.id)) preset.id = `${preset.id}-preset`;
-                        channels.push(preset);
-                    }
-                }
+                if (persistedState.config && !Array.isArray(persistedState.config.channels)) config.channels = [];
+                const channels = rebuildManagedPresets(normalizeChannels(config));
                 // A saved list is not proof of permissions for the current session.
                 const rememberedNekoKey = rememberApiKeys ? persistedState.nekoKey || "" : "";
                 for (const channel of channels) if (channel.nekoPreset) { channel.models = []; channel.apiKey = ""; }
@@ -309,6 +332,7 @@ export const useConfigStore = create<ConfigStore>()(
                         apiFormat: normalizeApiFormat(config.apiFormat),
                         channels,
                         models,
+                        model: normalizeModelOptionValue(config.model, channels),
                         imageModel: normalizeModelOptionValue(config.imageModel || config.model, channels),
                         videoModel: normalizeModelOptionValue(config.videoModel, channels),
                         textModel: normalizeModelOptionValue(config.textModel || config.model, channels),
@@ -365,7 +389,6 @@ export function createModelChannel(channel?: Partial<ModelChannel>): ModelChanne
         baseUrl: channel?.baseUrl?.trim() || defaultBaseUrlForApiFormat(apiFormat),
         apiKey: channel?.apiKey || "",
         apiFormat,
-        nekoPreset: channel?.nekoPreset,
         models: normalizeChannelModels(channel?.models),
     };
 }
@@ -510,7 +533,7 @@ export function resolveModelRequestConfig(config: AiConfig, value: string) {
 function normalizeChannels(config: AiConfig) {
     const persistedChannels = Array.isArray(config.channels) ? config.channels : [];
     const channels = persistedChannels.map((channel, index) =>
-        createModelChannel({
+        channel.nekoPreset ? createNekoPresets().find((preset) => preset.nekoPreset === channel.nekoPreset) || createModelChannel(channel) : createModelChannel({
             ...channel,
             id: channel.id || (index === 0 ? "default" : `channel-${index + 1}`),
             name: channel.name || (index === 0 ? i18n.t("config.channels.defaultName") : i18n.t("config.channels.indexedName", { index: index + 1 })),
@@ -525,7 +548,7 @@ function normalizeChannels(config: AiConfig) {
                 baseUrl: config.baseUrl || defaultConfig.baseUrl,
                 apiKey: config.apiKey || "",
                 apiFormat: config.apiFormat || defaultConfig.apiFormat,
-                models: normalizeChannelModels([config.model, config.imageModel, config.videoModel, config.textModel, config.audioModel].map(modelOptionName)),
+                models: normalizeChannelModels([...config.models, config.model, config.imageModel, config.videoModel, config.textModel, config.audioModel].map(modelOptionName)),
             }),
         );
     }

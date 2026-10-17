@@ -108,3 +108,39 @@ test("standard image generation still uses native OpenAI HTTP rather than templa
         expect(images[0].dataUrl).toContain("dGVzdA==");
     } finally { axios.defaults.adapter = previous; }
 });
+
+test("v0.20 image requests preserve all ten managed model transports and independent quality/resolution", async () => {
+    const axios = (await import("axios")).default;
+    const { createNekoPresets, NEKO_DRAWING_MODELS } = await import("../src/stores/use-config-store");
+    const { requestGeneration } = await import("../src/services/api/image");
+    const previous = axios.defaults.adapter;
+    const requests: Array<{ url: string; body: any; authorization: unknown }> = [];
+    axios.defaults.adapter = async request => {
+        requests.push({ url: request.url || "", body: JSON.parse(request.data), authorization: request.headers.Authorization || request.headers["x-goog-api-key"] });
+        return { data: { data: [{ b64_json: "dGVzdA==" }], candidates: [{ content: { parts: [{ inlineData: { mimeType: "image/png", data: "dGVzdA==" } }] } }] }, status: 200, statusText: "OK", headers: {}, config: request };
+    };
+    try {
+        useConfigStore.setState({ config: structuredClone(defaultConfig) });
+        const channels = createNekoPresets().map(channel => ({ ...channel, apiKey: "fake-v020-compatibility", models: NEKO_DRAWING_MODELS[channel.nekoPreset!].map(name => ({ name, capability: "image" as const })) }));
+        for (const channel of channels) {
+            for (const model of channel.models) {
+                for (const quality of ["low", "max"]) {
+                    await requestGeneration({ ...defaultConfig, channels, model: `${channel.id}::${model.name}`, quality, size: "2048x2048", count: "1" }, "local adapter only");
+                    const request = requests.at(-1)!;
+                    expect(request.authorization).toBe(channel.apiFormat === "gemini" ? "fake-v020-compatibility" : "Bearer fake-v020-compatibility");
+                    if (channel.apiFormat === "gemini") {
+                        expect(request.url).toBe(`https://api.nekocloud.vip/v1beta/models/${model.name}:generateContent`);
+                        expect(request.body.generationConfig.imageConfig).toEqual({ aspectRatio: "1:1", imageSize: "2K" });
+                        expect(request.body.generationConfig.responseModalities).toEqual(["TEXT", "IMAGE"]);
+                    } else {
+                        expect(request.url).toBe("https://api.nekocloud.vip/v1/images/generations");
+                        expect(request.body.model).toBe(model.name);
+                        expect(request.body.quality).toBe(quality);
+                        expect(request.body.size).toBe("2048x2048");
+                    }
+                }
+            }
+        }
+        expect(requests).toHaveLength(20);
+    } finally { axios.defaults.adapter = previous; }
+});

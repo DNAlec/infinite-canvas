@@ -1,3 +1,4 @@
+import axios from "axios";
 import { useMemo } from "react";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
@@ -22,6 +23,7 @@ export type ModelChannel = {
     apiKey: string;
     apiFormat: ApiCallFormat;
     models: ChannelModel[];
+    nekoPreset?: "gpt" | "gemini" | "grok";
 };
 
 export type AiConfig = {
@@ -72,36 +74,36 @@ export type ChannelCredentialsImportResult = {
 
 export const CONFIG_STORE_KEY = "infinite-canvas:ai_config_store";
 const CHANNEL_MODEL_SEPARATOR = "::";
-const OPENAI_BASE_URL = "https://api.openai.com";
+const OPENAI_BASE_URL = "https://api.nekocloud.vip";
 const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com";
 export const LOCAL_PROXY_PACKAGE = "@basketikun/canvas-proxy";
 export const DEFAULT_LOCAL_PROXY_URL = "http://127.0.0.1:23210";
+
+export function createNekoPresets(): ModelChannel[] {
+    return (["gpt", "gemini", "grok"] as const).map((preset) => ({ id: `nekocloud-${preset}`, nekoPreset: preset, name: preset === "gpt" ? "猫云 GPT 绘图" : preset === "grok" ? "猫云 Grok 绘图" : "猫云 Gemini 绘图", baseUrl: OPENAI_BASE_URL, apiKey: "", apiFormat: preset === "gemini" ? "gemini" : "openai", models: [] }));
+}
+
+/** Managed identity and transport never come from persisted/imported channel fields. */
+function rebuildManagedPresets(channels: ModelChannel[]): ModelChannel[] {
+    const custom = channels.filter((channel) => !channel.nekoPreset);
+    const presets = createNekoPresets();
+    for (const preset of presets) {
+        while (custom.some((channel) => channel.id === preset.id)) preset.id += "-preset";
+    }
+    return [...custom, ...presets];
+}
 
 export const defaultConfig: AiConfig = {
     channelMode: "local",
     baseUrl: OPENAI_BASE_URL,
     apiKey: "",
     apiFormat: "openai",
-    channels: [
-        {
-            id: "default",
-            name: i18n.t("config.channels.defaultName"),
-            baseUrl: OPENAI_BASE_URL,
-            apiKey: "",
-            apiFormat: "openai",
-            models: [
-                { name: "gpt-image-2", capability: "image" },
-                { name: "grok-imagine-video", capability: "video" },
-                { name: "gpt-5.5", capability: "text" },
-                { name: "gpt-4o-mini-tts", capability: "audio" },
-            ],
-        },
-    ],
-    model: "default::gpt-image-2",
-    imageModel: "default::gpt-image-2",
-    videoModel: "default::grok-imagine-video",
-    textModel: "default::gpt-5.5",
-    audioModel: "default::gpt-4o-mini-tts",
+    channels: createNekoPresets(),
+    model: "",
+    imageModel: "",
+    videoModel: "",
+    textModel: "",
+    audioModel: "",
     audioVoice: "alloy",
     audioFormat: "mp3",
     audioSpeed: "1",
@@ -113,7 +115,7 @@ export const defaultConfig: AiConfig = {
     videoMode: "frames",
     systemPrompt: "",
     reasoningEffort: "auto",
-    models: ["default::gpt-image-2", "default::grok-imagine-video", "default::gpt-5.5", "default::gpt-4o-mini-tts"],
+    models: [],
     quality: "auto",
     size: "1:1",
     background: "",
@@ -131,7 +133,19 @@ export const defaultWebdavSyncConfig: WebdavSyncConfig = {
     lastSyncedAt: "",
 };
 
+export const NEKO_DRAWING_MODELS = {
+    grok: ["grok-imagine-image", "grok-imagine-image-2.0", "grok-imagine-image-quality"],
+    gpt: ["gpt-image-2", "gpt-image-2.5-flare", "gpt-image-2.5-sunburst"],
+    gemini: ["gemini-2.5-flash-image", "gemini-3.1-flash-lite-image", "gemini-3.1-flash-image-preview", "gemini-3-pro-image-preview"],
+};
+
 type ConfigStore = {
+    nekoKey: string;
+    nekoValidation: { status: "idle" | "checking" | "success" | "empty" | "error"; message: string };
+    setNekoKey: (key: string) => void;
+    validateNekoKey: () => Promise<void>;
+    rememberApiKeys: boolean;
+    setRememberApiKeys: (remember: boolean) => void;
     config: AiConfig;
     webdav: WebdavSyncConfig;
     isConfigOpen: boolean;
@@ -203,9 +217,45 @@ function isAiConfigReady(config: AiConfig, model: string) {
     return Boolean(model.trim() && channel.baseUrl.trim() && channel.apiKey.trim());
 }
 
+let nekoValidationRevision = 0;
+
 export const useConfigStore = create<ConfigStore>()(
     persist(
         (set, get) => ({
+            nekoKey: "",
+            nekoValidation: { status: "idle", message: "填写猫云 Key 后校验并应用绘图预设。" },
+            setNekoKey: (nekoKey) => set((state) => {
+                nekoValidationRevision++;
+                const channels = state.config.channels.map((channel) => channel.nekoPreset ? { ...channel, apiKey: "", models: [] } : channel);
+                const models = modelOptionsFromChannels(channels);
+                return { nekoKey, config: { ...state.config, channels, models, imageModel: models.includes(state.config.imageModel) ? state.config.imageModel : "", model: models.includes(state.config.model) ? state.config.model : "" }, nekoValidation: { status: "idle", message: "Key 已修改，请重新校验并应用。" } };
+            }),
+            validateNekoKey: async () => {
+                const key = get().nekoKey.trim();
+                get().setNekoKey(get().nekoKey);
+                const revision = nekoValidationRevision;
+                set({ nekoValidation: { status: "checking", message: "正在获取模型列表（不发起绘图请求）…" } });
+                if (!key) { set({ nekoValidation: { status: "error", message: "请填写猫云 Key。" } }); return; }
+                try {
+                    const { data } = await axios.get(buildApiUrl(OPENAI_BASE_URL, "/models"), { headers: { Authorization: `Bearer ${key}` }, timeout: 20000 });
+                    if (!data || (!Array.isArray(data.data) && !Array.isArray(data.models))) throw new Error("响应格式异常");
+                    const names = new Set<string>((data.data || data.models).map((entry: { id?: string; name?: string }) => (entry.id || entry.name || "").replace(/^models\//, "")));
+                    if (revision !== nekoValidationRevision || get().nekoKey.trim() !== key) return;
+                    const config = get().config;
+                    const channels = rebuildManagedPresets(config.channels).map((channel) => channel.nekoPreset ? { ...channel, apiKey: key, models: NEKO_DRAWING_MODELS[channel.nekoPreset].filter((name) => names.has(name)).map((name) => ({ name, capability: "image" as const })) } : channel);
+                    const models = modelOptionsFromChannels(channels);
+                    const available = channels.filter((channel) => channel.nekoPreset).flatMap((channel) => channel.models.map((model) => encodeChannelModel(channel.id, model.name)));
+                    const imageModel = models.includes(config.imageModel) ? config.imageModel : available[0] || "";
+                    set({ config: { ...config, channels, models, imageModel, model: models.includes(config.model) ? config.model : imageModel }, nekoValidation: { status: available.length ? "success" : "empty", message: available.length ? `校验成功，已启用 ${available.length} 个绘图模型。` : "校验完成，但此 Key 的模型列表没有匹配的 GPT / Gemini / Grok 绘图预设。" } });
+                } catch (error) {
+                    if (revision !== nekoValidationRevision || get().nekoKey.trim() !== key) return;
+                    const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+                    const message = status ? `模型列表校验失败（HTTP ${status}），请检查 Key 权限或稍后重试。` : axios.isAxiosError(error) && (error.code === "ECONNABORTED" || error.code === "ETIMEDOUT") ? "模型列表校验超时（20 秒），请稍后重试。" : axios.isAxiosError(error) ? "模型列表校验失败：网络连接或跨域受阻，请检查连接或本地代理。" : "模型列表校验失败：响应格式异常，请稍后重试。";
+                    set({ nekoValidation: { status: "error", message } });
+                }
+            },
+            rememberApiKeys: false,
+            setRememberApiKeys: (rememberApiKeys) => set({ rememberApiKeys }),
             config: defaultConfig,
             webdav: defaultWebdavSyncConfig,
             isConfigOpen: false,
@@ -238,17 +288,43 @@ export const useConfigStore = create<ConfigStore>()(
         }),
         {
             name: CONFIG_STORE_KEY,
-            partialize: (state) => ({ config: state.config, webdav: state.webdav }),
+            // Persist the sanitized snapshot even when storage already has the current version.
+            onRehydrateStorage: function () {
+                const storage = this.storage;
+                const name = this.name;
+                return (state, error) => {
+                    if (!state || error) return;
+                    try {
+                        state.setRememberApiKeys(state.rememberApiKeys);
+                    } catch {
+                        // Keep the sanitized in-memory state and finish hydration without retrying writes.
+                        try {
+                            storage?.removeItem(name);
+                        } catch {
+                            // Never display storage errors: their messages may contain credentials.
+                            window.alert("无法保存或清除本地配置，旧凭据可能仍保留在此浏览器中。请在浏览器设置中清除此站点的数据后重试；当前已清理的内存配置仍可使用。");
+                        }
+                    }
+                };
+            },
+            partialize: (state) => ({ nekoKey: state.rememberApiKeys ? state.nekoKey : "", rememberApiKeys: state.rememberApiKeys, config: storedKeyConfig(state.config, state.rememberApiKeys), webdav: state.webdav }),
             merge: (persisted, current) => {
                 const persistedState = (persisted || {}) as Partial<ConfigStore>;
-                const persistedConfig = (persistedState.config || {}) as Partial<AiConfig>;
+                const rememberApiKeys = persistedState.rememberApiKeys === true;
+                const persistedConfig = storedKeyConfig({ ...defaultConfig, ...persistedState.config }, rememberApiKeys);
                 const persistedWebdav = (persistedState.webdav || {}) as Partial<WebdavSyncConfig>;
                 const config = { ...defaultConfig, ...persistedConfig };
-                if (!Array.isArray(persistedConfig.channels)) config.channels = [];
-                const channels = normalizeChannels(config);
+                if (persistedState.config && !Array.isArray(persistedState.config.channels)) config.channels = [];
+                const channels = rebuildManagedPresets(normalizeChannels(config));
+                // A saved list is not proof of permissions for the current session.
+                const rememberedNekoKey = rememberApiKeys ? persistedState.nekoKey || "" : "";
+                for (const channel of channels) if (channel.nekoPreset) { channel.models = []; channel.apiKey = ""; }
                 const models = modelOptionsFromChannels(channels);
                 return {
                     ...current,
+                    nekoKey: rememberedNekoKey,
+                    nekoValidation: { status: "idle", message: "请校验并应用猫云绘图预设。" },
+                    rememberApiKeys,
                     webdav: { ...defaultWebdavSyncConfig, ...persistedWebdav },
                     config: {
                         ...config,
@@ -256,6 +332,7 @@ export const useConfigStore = create<ConfigStore>()(
                         apiFormat: normalizeApiFormat(config.apiFormat),
                         channels,
                         models,
+                        model: normalizeModelOptionValue(config.model, channels),
                         imageModel: normalizeModelOptionValue(config.imageModel || config.model, channels),
                         videoModel: normalizeModelOptionValue(config.videoModel, channels),
                         textModel: normalizeModelOptionValue(config.textModel || config.model, channels),
@@ -279,6 +356,10 @@ export const useConfigStore = create<ConfigStore>()(
         },
     ),
 );
+
+function storedKeyConfig(config: AiConfig, remember: boolean): AiConfig {
+    return remember ? config : { ...config, apiKey: "", channels: config.channels.map((channel) => ({ ...channel, apiKey: "" })) };
+}
 
 export function useEffectiveConfig() {
     const config = useConfigStore((state) => state.config);
@@ -424,8 +505,22 @@ export function resolveModelChannel(config: AiConfig, value: string) {
     return matched || config.channels[0] || createModelChannel({ id: "default", name: i18n.t("config.channels.defaultName"), baseUrl: config.baseUrl, apiKey: config.apiKey, apiFormat: config.apiFormat, models: config.models.map(modelOptionName).map((name) => ({ name, capability: guessCapability(name) })) });
 }
 
+export function modelMatchesChannelProtocol(baseUrl: string, apiFormat: string, model: string): boolean {
+    try {
+        if (new URL(baseUrl).origin !== "https://api.nekocloud.vip") return true;
+    } catch { return true; }
+    const gemini = model.replace(/^models\//, "").toLowerCase().startsWith("gemini-");
+    return apiFormat === "gemini" ? gemini : !gemini;
+}
+
 export function resolveModelRequestConfig(config: AiConfig, value: string) {
     const channel = resolveModelChannel(config, value);
+    if (channel.nekoPreset && !channel.models.some((model) => model.name === modelOptionName(value || config.model))) {
+        throw new Error("此绘图模型尚未通过 Key 权限校验，请校验并应用后再生成。");
+    }
+    if (!modelMatchesChannelProtocol(channel.baseUrl, channel.apiFormat, modelOptionName(value || config.model))) {
+        throw new Error(channel.apiFormat === "gemini" ? "此模型不适用于 Gemini 渠道，请切换到 OpenAI 渠道。" : "Gemini 模型需使用 Gemini 协议渠道，请切换渠道后再生成。");
+    }
     return {
         ...config,
         model: modelOptionName(value || config.model),
@@ -438,7 +533,7 @@ export function resolveModelRequestConfig(config: AiConfig, value: string) {
 function normalizeChannels(config: AiConfig) {
     const persistedChannels = Array.isArray(config.channels) ? config.channels : [];
     const channels = persistedChannels.map((channel, index) =>
-        createModelChannel({
+        channel.nekoPreset ? createNekoPresets().find((preset) => preset.nekoPreset === channel.nekoPreset) || createModelChannel(channel) : createModelChannel({
             ...channel,
             id: channel.id || (index === 0 ? "default" : `channel-${index + 1}`),
             name: channel.name || (index === 0 ? i18n.t("config.channels.defaultName") : i18n.t("config.channels.indexedName", { index: index + 1 })),
@@ -453,7 +548,7 @@ function normalizeChannels(config: AiConfig) {
                 baseUrl: config.baseUrl || defaultConfig.baseUrl,
                 apiKey: config.apiKey || "",
                 apiFormat: config.apiFormat || defaultConfig.apiFormat,
-                models: normalizeChannelModels([config.model, config.imageModel, config.videoModel, config.textModel, config.audioModel].map(modelOptionName)),
+                models: normalizeChannelModels([...config.models, config.model, config.imageModel, config.videoModel, config.textModel, config.audioModel].map(modelOptionName)),
             }),
         );
     }

@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { ModelPicker } from "@/components/model-picker";
+import { NekoPresetsPanel } from "@/components/layout/neko-presets-panel";
 import { ChannelEditorDrawer } from "@/components/layout/channel-editor-drawer";
 import { ConfigLocalProxy } from "@/components/layout/config-local-proxy";
 import { ConfigPromptSources } from "@/components/layout/config-prompt-sources";
@@ -185,6 +186,7 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
                         label: t("config.tabs.channels"),
                         children: (
                             <div>
+                                <NekoPresetsPanel />
                                 <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                                     <div className="text-xs text-stone-500">{t("config.channels.description")}</div>
                                     <Button type="primary" icon={<Plus className="size-4" />} onClick={addChannel}>
@@ -192,7 +194,7 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
                                     </Button>
                                 </div>
                                 <div className="space-y-2">
-                                    {config.channels.map((channel) => (
+                                    {config.channels.filter((channel) => !channel.nekoPreset).map((channel) => (
                                         <div key={channel.id} className="flex items-center justify-between gap-3 rounded-lg border border-stone-200 px-4 py-3 dark:border-stone-800">
                                             <div className="min-w-0">
                                                 <div className="truncate text-sm font-semibold">{channel.name || t("config.channels.unnamed")}</div>

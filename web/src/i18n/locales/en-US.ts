@@ -44,7 +44,7 @@ export default {
         returns: { image: "Text-to-image and image editing use different APIs; distinguish them by whether images is empty. Return an image URL or data URL, an array of them, or [{ dataUrl }] / [{ url }] / [{ b64_json }].", video: "Poll inside the script and return { url }, { blob }, or a video URL string.", audio: "Return a Blob, base64/data URL string, or { b64_json } / { data } / { url }.", text: "Push streaming output with onDelta(text), then return the complete text string." },
         templates: { openai: "OpenAI format", gemini: "Gemini format" },
         authoring: {
-            intro: "Write a model request script for Infinite Canvas. Capability: {{capability}}. Target model: {{model}}.",
+            intro: "Custom model scripts are disabled on this site. Capability: {{capability}}. Target model: {{model}}.",
             shape: "Write an async function whose parameter list names the variables you use, and unpack params into fields such as size, quality, and count. Do not import modules or use Markdown fences. Send the request and return the result inside the function. The runtime injects matching locals, so finish with return await functionName({ the same arguments }).",
             returnTitle: "Return requirements",
             variablesTitle: "Available variables",
@@ -480,7 +480,7 @@ export default {
         saved: "Settings saved",
         savedContinue: "Settings saved. Continue with your previous request.",
         channels: {
-            description: "Choose a protocol for each provider, fetch its models, assign capabilities, and optionally customize request scripts.",
+            description: "Choose a protocol for each provider, fetch its models, and assign capabilities. Custom model scripts are disabled on this site.",
             add: "Add provider",
             unnamed: "Unnamed provider",
             numberedName: "Provider {{count}}",
@@ -525,7 +525,7 @@ export default {
             protocol: "Protocol",
             baseUrl: "API endpoint",
             models: "Provider models",
-            modelDescription: "{{count}} selected; assign a capability to each model and optionally customize its request script.",
+            modelDescription: "{{count}} selected; assign a capability to each model. Custom model scripts are disabled on this site.",
             selectModels: "Select models",
             scriptReady: "Script set",
             script: "Request script",
